@@ -29,6 +29,14 @@ public class Alquiler {
         this.fechaFin = fechaFin;
     }
 
+    public Alquiler(String jsonString) {
+        JSONObject json = new JSONObject(jsonString);
+        this.vehiculo = FactoriaVehiculos.getVehiculo(json.getJSONObject("vehiculo").toString());
+        this.cliente = new Cliente(json.getJSONObject("cliente").toString());
+        this.fechaInicio = LocalDate.parse(json.getString("fechaInicio"));
+        this.fechaFin = LocalDate.parse(json.getString("fechaFin"));
+    }
+
     public static Alquiler[] obtenerAlquileres() {
         return alquileres; 
     }
@@ -63,6 +71,7 @@ public class Alquiler {
         int dias = (int) ChronoUnit.DAYS.between(fechaInicio, fechaFin) + 1;
         return dias * PRECIO_BASE;
     }
+
     public int calcularPrecioAlquiler(LocalDate fechaInicio, LocalDate fechaFin,
             PoliticasDePrecios politica, Vehiculo vehiculo) {
         ICalculadorPrecio calculador = seleccionarCalculador(politica);
@@ -82,6 +91,7 @@ public class Alquiler {
                 return new CalculadorPrecioNormal();
         }
     }
+
     @Override 
     public String toString() {
         return new JSONObject(this).toString();
