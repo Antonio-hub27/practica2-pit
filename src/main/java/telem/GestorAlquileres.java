@@ -1,13 +1,20 @@
 package telem;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 public class GestorAlquileres {
-    
+
     private int contadorAlquileres = 0;
     private Alquiler[] alquileres = new Alquiler[1000];
 
-    // Para simplificar, vamos a definir un array de clientes y 
+    // Para simplificar, vamos a definir un array de clientes y
     // otro de vehículos dentro del gestor.
     // En una aplicación real estarían en una base de datos.
     private Cliente[] clientes = new Cliente[10];
@@ -54,7 +61,7 @@ public class GestorAlquileres {
     // MÉTODOS PARA GESTIONAR VEHÍCULOS
 
      public Vehiculo[] obtenerVehiculos(String tipo) {
-        
+
         Vehiculo[] vehiculosFiltrados = new Vehiculo[vehiculos.length];
         int contador = 0;
 
@@ -70,7 +77,7 @@ public class GestorAlquileres {
         Vehiculo[] resultado = new Vehiculo[contador];
         System.arraycopy(vehiculosFiltrados, 0, resultado, 0, contador);
         return resultado;
-    }   
+    }
 
     /**
      * Devuelve un array con los vehículos del tipo y categoría especificados.
@@ -117,7 +124,7 @@ public class GestorAlquileres {
      * @return
      */
     public Alquiler[] obtenerAlquileres() {
-        return alquileres; 
+        return alquileres;
     }
 
     public Alquiler[] obtenerAlquileres(Cliente cliente) {
@@ -149,6 +156,89 @@ public class GestorAlquileres {
     }
 
 
+    public void guardarEnFichero(String ruta) throws IOException {
+        JSONArray jClientes = new JSONArray();
+        for (Cliente c : clientes) {
+            if (c != null) {
+                jClientes.put(new JSONObject(c.toString()));
+            }
+        }
+
+        JSONArray jVehiculos = new JSONArray();
+        for (Vehiculo v : vehiculos) {
+            if (v != null) {
+                jVehiculos.put(new JSONObject(v.toString()));
+            }
+        }
+
+        JSONArray jAlquileres = new JSONArray();
+        for (int i = 0; i < contadorAlquileres; i++) {
+            jAlquileres.put(new JSONObject(alquileres[i].toString()));
+        }
+
+        JSONObject datos = new JSONObject();
+        datos.put("clientes", jClientes);
+        datos.put("vehiculos", jVehiculos);
+        datos.put("alquileres", jAlquileres);
+
+        Files.write(Paths.get(ruta), datos.toString(2).getBytes(StandardCharsets.UTF_8));
+    }
+
+    public void cargarDeFichero(String ruta) throws IOException {
+        String contenido = new String(Files.readAllBytes(Paths.get(ruta)), StandardCharsets.UTF_8);
+        JSONObject datos = new JSONObject(contenido);
+
+        Cliente[] nuevosClientes = new Cliente[clientes.length];
+        JSONArray jClientes = datos.getJSONArray("clientes");
+        for (int i = 0; i < jClientes.length() && i < nuevosClientes.length; i++) {
+            nuevosClientes[i] = new Cliente(jClientes.getJSONObject(i).toString());
+        }
+
+        Vehiculo[] nuevosVehiculos = new Vehiculo[vehiculos.length];
+        JSONArray jVehiculos = datos.getJSONArray("vehiculos");
+        for (int i = 0; i < jVehiculos.length() && i < nuevosVehiculos.length; i++) {
+            nuevosVehiculos[i] = FactoriaVehiculos.getVehiculo(jVehiculos.getJSONObject(i).toString());
+        }
+
+        clientes = nuevosClientes;
+        vehiculos = nuevosVehiculos;
+        alquileres = new Alquiler[alquileres.length];
+        contadorAlquileres = 0;
+
+        JSONArray jAlquileres = datos.getJSONArray("alquileres");
+        for (int i = 0; i < jAlquileres.length(); i++) {
+            Alquiler leido = new Alquiler(jAlquileres.getJSONObject(i).toString());
+            Vehiculo vehiculo = buscarVehiculo(leido.getVehiculo().getMatricula());
+            Cliente cliente = buscarCliente(leido.getCliente().getDni());
+            if (vehiculo == null) {
+                vehiculo = leido.getVehiculo();
+            }
+            if (cliente == null) {
+                cliente = leido.getCliente();
+            }
+            agregarAlquiler(new Alquiler(vehiculo, cliente, leido.getFechaInicio(), leido.getFechaFin()));
+        }
+    }
+
+    private Vehiculo buscarVehiculo(String matricula) {
+        for (Vehiculo v : vehiculos) {
+            if (v != null && v.getMatricula().equals(matricula)) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private Cliente buscarCliente(String dni) {
+        for (Cliente c : clientes) {
+            if (c != null && c.getDni().equals(dni)) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+
     /////////////////////////////////////////////////////////////////////////////////////
     // INTERFAZ DE USUARIO (CONSOLA) Y LÓGICA DE NEGOCIO
 
@@ -157,19 +247,28 @@ public class GestorAlquileres {
 
 
     public void menuPrincipal(){
-        
+
         boolean salir = false;
-        
+
         while(!salir){
 
             // Se da oportunidad de salir inmediatamente de la app.
             System.out.println("Gestíon de Alquileres");
             System.out.println("¿Desea salir de la app (S/N)?");
+            System.out.println("(G) guardar datos en fichero, (C) cargar datos de fichero");
 
             char s = KeyBoard.readChar();
             if (s == 's' || s == 'S'){
                 System.out.println("Bye ...");
                 return;
+            }
+            if (s == 'g' || s == 'G'){
+                menuGuardar();
+                continue;
+            }
+            if (s == 'c' || s == 'C'){
+                menuCargar();
+                continue;
             }
 
             // Primero se identifica al cliente:
@@ -211,7 +310,7 @@ public class GestorAlquileres {
 
                             // Calculamos precio.
                             // Aquí habría que determinar la política de precios aplicable según el tipo de cliente y la fecha.
-                            // Para simplificar, se aplicará la política de cliente frecuente si el cliente tiene más de 3 alquileres previos, 
+                            // Para simplificar, se aplicará la política de cliente frecuente si el cliente tiene más de 3 alquileres previos,
                             // y la política normal en caso contrario.
 
                             PoliticasDePrecios politica;
@@ -230,15 +329,15 @@ public class GestorAlquileres {
                             int precio = q.calcularPrecioAlquiler(inicio, fin, politica, v);
                             System.out.println("Vehículo " + v.getMatricula() + " del " + inicio + " al " + fin
                                     + " (" + dias + " días). Precio: " + precio + " euros");
-                            
+
                         }
                         else{
                             System.out.println("Debe seleccionar un vehículo disponible");
                         }
                         break;
-                    case 2: 
+                    case 2:
                         entregarVehiculo(cliente);
-                        break;              
+                        break;
                     case 3:
                         Alquiler alqs [] = obtenerAlquileres(cliente);
                         if (alqs.length == 0) {
@@ -255,6 +354,46 @@ public class GestorAlquileres {
             else{
                 System.out.println("Debe identificarse correctamente o salir de la app");
             }
+        }
+    }
+
+    private String leerNombreFichero() {
+        String ruta = KeyBoard.readString();
+        while (ruta != null && ruta.trim().isEmpty()) {
+            ruta = KeyBoard.readString();
+        }
+        return ruta;
+    }
+
+    private void menuGuardar() {
+        System.out.println("Nombre del fichero donde guardar (por ejemplo, datos.json):");
+        String ruta = leerNombreFichero();
+        if (ruta == null) {
+            System.out.println("Nombre de fichero no válido.");
+            return;
+        }
+        try {
+            guardarEnFichero(ruta.trim());
+            System.out.println("Datos guardados en " + ruta.trim());
+        } catch (IOException e) {
+            System.out.println("No se pudo guardar el fichero: " + e.getMessage());
+        }
+    }
+
+    private void menuCargar() {
+        System.out.println("Nombre del fichero a cargar (por ejemplo, datos.json):");
+        String ruta = leerNombreFichero();
+        if (ruta == null) {
+            System.out.println("Nombre de fichero no válido.");
+            return;
+        }
+        try {
+            cargarDeFichero(ruta.trim());
+            System.out.println("Datos cargados de " + ruta.trim() + ": " + contadorAlquileres + " alquileres.");
+        } catch (IOException e) {
+            System.out.println("No se pudo leer el fichero: " + e.getMessage());
+        } catch (RuntimeException e) {
+            System.out.println("El fichero no tiene un formato válido: " + e.getMessage());
         }
     }
 
@@ -298,7 +437,7 @@ public class GestorAlquileres {
         Cliente cliente = null;
 
         while (!seleccionado) {
-        
+
             System.out.println("Bienvenido al Gestor de Alquileres");
             for (int i = 0; i < clientes.length; i++) {
                 if (clientes[i] != null) {
@@ -327,7 +466,7 @@ public class GestorAlquileres {
         Vehiculo vehiculo = null;
 
         while (!seleccionado) {
-        
+
             System.out.println("Estimado Sr./Sra. " + cliente.getNombre());
             System.out.println("Introduzca el número correspondiente al tipo de vehículo que desea alquilar:");
             System.out.println("1. Turismo, 2. Motocicleta, 3. Vehículo Industrial: ");
